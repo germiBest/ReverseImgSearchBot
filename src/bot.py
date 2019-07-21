@@ -1,37 +1,37 @@
 import logging
-import requests
-import json
 import os
 import tgconfig as cfg
-from telegram.ext import Updater, CommandHandler, MessageHandler, Filters
-# Enable logging
+import re
+import instagrab
+from telegram.ext import Updater, CommandHandler, MessageHandler, Filters, CallbackQueryHandler
+import telegram
+import mrisaquery as mrisa
 
+# Enable logging
 logging.basicConfig(format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
                     level=logging.INFO)
 
 logger = logging.getLogger(__name__)
 
-
-# Define a few command handlers. These usually take the two arguments bot and
-# update. Error handlers also receive the raised TelegramError object in error.
-def quer(update, link):
-    headers = {
-        'Content-Type': 'application/json',
-    }
-    data = '{"image_url":"' + link + '", "resized_images":"True"}'
-    response = requests.post('http://localhost:5000/search', headers=headers, data=data)
-    json_data = json.loads(response.text)
-    update.message.reply_text('The best match is: ' + json_data["best_guess"].encode('ascii', 'ignore'))
-    return json_data
+def urlparse(update, context):
+    parsee = re.search("(?P<url>https?://[^\s]+)", update.message.text.encode('ascii', 'ignore'))
+    if parsee is not None:
+        lst = instagrab.geturls(parsee.group("url"))
+        if not lst == -1:
+            if isinstance(lst, str):
+                mrisa.quer(update, lst)
+            else:
+                mrisa.quer(update, lst[0])
+        else:
+            mrisa.quer(update, parsee.group("url"))
 
 def start(update, context):
-    """Send a message when the command /start is issued."""
     update.message.reply_text('This bot is a service for searching by image. To use it, send an image or forward a message with a picture.')
 
 def imga(update, context):
     update.message.reply_text("Processing...")
     lnk = update.message['photo'][-1].get_file(10)['file_path']
-    jsdt = quer(update, lnk)
+    jsdt = mrisa.quer(update, lnk)
     for x in jsdt["links"]:
         update.message.reply_text(x)
 
@@ -56,14 +56,11 @@ def main():
 
     updater = Updater(cfg.api_token, use_context=True)
 
-
     dp = updater.dispatcher
 
-
     dp.add_handler(CommandHandler("start", start))
-
     dp.add_handler(MessageHandler(Filters.photo, imga))
-
+    dp.add_handler(MessageHandler(Filters.text, urlparse))
     dp.add_error_handler(error)
 
     updater.start_polling()
